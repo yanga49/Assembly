@@ -27,7 +27,7 @@ class TopLevelProgram(ast.NodeVisitor):
         # visiting the left part, now knowing where to store the result
         self.visit(node.value)
         if self.__should_save:
-            self.__record_instruction(f'STWA {self.__current_variable},d')
+            self.__record_instruction(f'STWA {self.__current_variable}, d')
         else:
             self.__should_save = True
         self.__current_variable = None
@@ -54,13 +54,45 @@ class TopLevelProgram(ast.NodeVisitor):
                 self.visit(node.args[0])
             case 'input':
                 # We are only supporting integers for now
-                self.__record_instruction(f'DECI {self.__current_variable},d')
+                self.__record_instruction(f'DECI {self.__current_variable}, d')
                 self.__should_save = False # DECI already save the value in memory
             case 'print':
                 # We are only supporting integers for now
-                self.__record_instruction(f'DECO {node.args[0].id},d')
+                self.__record_instruction(f'DECO {node.args[0].id}, d')
             case _:
                 raise ValueError(f'Unsupported function call: { node.func.id}')
+    
+    def visit_If(self,node):
+        cond_id = self.__identify()
+        inverted = {
+            ast.Lt:  'BRGE', # '<'  in the code means we branch if '>=' 
+            ast.LtE: 'BRGT', # '<=' in the code means we branch if '>' 
+            ast.Gt:  'BRLE', # '>'  in the code means we branch if '<='
+            ast.GtE: 'BRLT', # '>=' in the code means we branch if '<'
+            ast.NotEq: 'BREQ', # '=' in the code means we branch if '!='
+            ast.Eq: 'BRNE' # '!=' in the code means we branch if '=='
+        }
+        # left part can only be a variable
+        self.__access_memory(node.test.left, 'LDWA', label = f'if_{cond_id}')
+        # right part can only be a variable
+        self.__access_memory(node.test.comparators[0], 'CPWA')
+        # Branching is condition is not true (thus, inverted)
+    
+        if node.orelse:
+            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} else_{cond_id}')
+
+        # Visiting the body of the loop
+
+        for contents in node.body:
+            self.visit(contents)
+
+
+        if node.orelse:
+            self.__record_instruction(f'NOP1', label = f'else_{cond_id}')
+            for contents in node.orelse:
+                self.visit(contents)
+        
+        
 
     ####
     ## Handling While loops (only variable OP variable)
@@ -73,6 +105,8 @@ class TopLevelProgram(ast.NodeVisitor):
             ast.LtE: 'BRGT', # '<=' in the code means we branch if '>' 
             ast.Gt:  'BRLE', # '>'  in the code means we branch if '<='
             ast.GtE: 'BRLT', # '>=' in the code means we branch if '<'
+            ast.NotEq: 'BREQ', # '=' in the code means we branch if '!='
+            ast.Eq: 'BRNE' # '!=' in the code means we branch if '=='
         }
         # left part can only be a variable
         self.__access_memory(node.test.left, 'LDWA', label = f'test_{loop_id}')
@@ -86,6 +120,8 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'BR test_{loop_id}')
         # Sentinel marker for the end of the loop
         self.__record_instruction(f'NOP1', label = f'end_l_{loop_id}')
+
+    
 
     ####
     ## Not handling function calls 
