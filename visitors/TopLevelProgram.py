@@ -27,7 +27,7 @@ class TopLevelProgram(ast.NodeVisitor):
         # visiting the left part, now knowing where to store the result
         self.visit(node.value)
         if self.__should_save:
-            self.__record_instruction(f'STWA {self.__current_variable},d')
+            self.__record_instruction(f'STWA {self.__current_variable}, d')
         else:
             self.__should_save = True
         self.__current_variable = None
@@ -36,7 +36,7 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'LDWA {node.value},i')
     
     def visit_Name(self, node):
-        self.__record_instruction(f'LDWA {node.id},d')
+        self.__record_instruction(f'LDWA {node.id}, d')
 
     def visit_BinOp(self, node):
         self.__access_memory(node.left, 'LDWA')
@@ -103,7 +103,7 @@ class TopLevelProgram(ast.NodeVisitor):
             for contents in node.orelse:
                 self.visit(contents)
         
-        
+        self.__record_instruction(f'NOP1', label = f'aft_{cond_id}')
 
     ####
     ## Handling While loops (only variable OP variable)
