@@ -27,7 +27,7 @@ class TopLevelProgram(ast.NodeVisitor):
         # visiting the left part, now knowing where to store the result
         self.visit(node.value)
         if self.__should_save:
-            self.__record_instruction(f'STWA {self.__current_variable}, d')
+            self.__record_instruction(f'STWA {self.__current_variable},d')
         else:
             self.__should_save = True
         self.__current_variable = None
@@ -62,6 +62,7 @@ class TopLevelProgram(ast.NodeVisitor):
             case _:
                 raise ValueError(f'Unsupported function call: { node.func.id}')
     
+
     def visit_If(self,node):
         cond_id = self.__identify()
         inverted = {
@@ -78,14 +79,24 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__access_memory(node.test.comparators[0], 'CPWA')
         # Branching is condition is not true (thus, inverted)
     
-        if node.orelse:
-            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} else_{cond_id}')
 
         # Visiting the body of the loop
+        if len(node.orelse) == 1:
+            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} else_{cond_id}')
+
 
         for contents in node.body:
             self.visit(contents)
 
+        
+        while node.orelse and len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} elif_{cond_id}')
+            self.__record_instruction(f'NOP1', label = f'elif_{cond_id}')
+            node = node.orelse[0]
+            self.visit(node.test)
+            for content in node.body:
+                self.visit(content)
+            
 
         if node.orelse:
             self.__record_instruction(f'NOP1', label = f'else_{cond_id}')
