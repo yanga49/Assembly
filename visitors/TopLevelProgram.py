@@ -79,31 +79,39 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__access_memory(node.test.comparators[0], 'CPWA')
         # Branching is condition is not true (thus, inverted)
     
-
         # Visiting the body of the loop
-        if len(node.orelse) == 1:
-            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} else_{cond_id}')
-
+        
+        if node.orelse:
+            if isinstance(node.orelse[0], ast.If):
+                self.__record_instruction(f'/{inverted[type(node.test.ops[0])]} elif_{cond_id}')
+            else: 
+                self.__record_instruction(f'*{inverted[type(node.test.ops[0])]} else_{cond_id}')
 
         for contents in node.body:
             self.visit(contents)
 
-        
         while node.orelse and len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
-            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} elif_{cond_id}')
             self.__record_instruction(f'NOP1', label = f'elif_{cond_id}')
+            
+            #self.__access_memory(node.test.left, 'LDWA', label = f'/elif_{cond_id}')
+        # right part can only be a variable
+            self.__access_memory(node.test.comparators[0], 'CPWA')
+            self.__record_instruction(f'//{inverted[type(node.test.ops[0])]} else_{cond_id}')
             node = node.orelse[0]
             self.visit(node.test)
             for content in node.body:
                 self.visit(content)
+            self.__record_instruction(f'//BR aft_{cond_id}')
             
-
         if node.orelse:
             self.__record_instruction(f'NOP1', label = f'else_{cond_id}')
             for contents in node.orelse:
                 self.visit(contents)
+            self.__record_instruction(f'//BR aft_{cond_id}')
         
+        self.__record_instruction(f'//BR aft_{cond_id}')
         self.__record_instruction(f'NOP1', label = f'aft_{cond_id}')
+
 
     ####
     ## Handling While loops (only variable OP variable)
