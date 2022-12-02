@@ -89,6 +89,7 @@ class TopLevelProgram(ast.NodeVisitor):
 
         for contents in node.body:
             self.visit(contents)
+        self.__record_instruction(f'//BR aft_{cond_id}')
 
         while node.orelse and len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
             self.__record_instruction(f'NOP1', label = f'elif_{cond_id}')
