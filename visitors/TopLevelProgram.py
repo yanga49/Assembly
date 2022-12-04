@@ -81,8 +81,9 @@ class TopLevelProgram(ast.NodeVisitor):
                 # We are only supporting integers for now
                 name = self.__get_name(node.args[0].id)
                 self.__record_instruction(f'DECO {name},d')
-            case _:
-                raise ValueError(f'Unsupported function call: {node.func.id}')
+            case _: 
+                self.__record_instruction(f'***CALL {node.func.id}')
+                #raise ValueError(f'Unsupported function call: {node.func.id}')
 
     ####
     ## Handling While loops (only variable OP variable)
@@ -165,14 +166,33 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'NOP1', label = f'aft_{cond_id}')
 
 
-
     ####
     ## Not handling function calls 
     ####
 
     def visit_FunctionDef(self, node):
-        """We do not visit function definitions, they are not top level"""
+        
+        # if function is not a void, allocating space on the stack for return value
+        for s in node.body:
+            if isinstance(s, ast.Return):
+                self.__record_instruction(f'.EQUATE (last stack pos)', label = f'retVal')
+        
+        if node.args.args:
+            self.__record_instruction(f'.EQUATE (2nd last stack pos)', label = f'{node.args.args[0].arg}')
+
+        # function definition
+        self.__record_instruction(f'NOP1', label = f'{node.name}')
+        self.__record_instruction(f'SUBSP (space according to local variables), i')
+        for contents in node.body:
+            self.visit(contents)
+        self.__record_instruction(f'ADDSP (space according to local variables), i')
+        self.__record_instruction(f'RET')
+        
+    def visit_Return(self, node):
+        # for now pass, add later
         pass
+
+
 
     ####
     ## Helper functions to 

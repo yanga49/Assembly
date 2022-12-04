@@ -23,5 +23,6 @@ class GlobalVariableExtraction(ast.NodeVisitor):
         # print(self.results)
 
     def visit_FunctionDef(self, node):
-        """We do not visit function definitions, they are not global by definition"""
-        pass
+        # right now, it is allocating to global but we want this to become local
+        for contents in node.body:
+            self.visit(contents)
