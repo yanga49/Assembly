@@ -54,7 +54,7 @@ class TopLevelProgram(ast.NodeVisitor):
             self.__first[node_value['name']] = True
 
     def visit_Name(self, node):
-        node_value = node.value.__dict__
+        node_value = node.__dict__
         name = self.__get_name(node.id)
         if 'value' not in node_value.keys() and not self.is_constant(node.id):  # check not a Constant
             self.__record_instruction(f'LDWA {name},d')
@@ -141,7 +141,9 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__elem_id = self.__elem_id + 1
         return result
 
-    def __get_name(self, name: str):  # records and returns 8 character name
+    def __get_name(self, name):  # records and returns 8 character name
+        if type(name) is not str:
+            return name
         if name not in self.__symbol_table.keys():
             if len(name) > 8:  # rename if len > 8
                 self.__symbol_table[name] = name[0: 4] + name[-4:]

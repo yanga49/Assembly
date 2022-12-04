@@ -7,7 +7,6 @@ class StaticMemoryAllocation():
 
     def generate(self):
         print('; Allocating Global (static) memory')
-        print(self.__global_vars)
         for n in self.__global_vars.keys():
             name = self.__get_name(n)
             if self.__global_vars[n] is None:
