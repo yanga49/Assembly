@@ -50,6 +50,8 @@ class TopLevelProgram(ast.NodeVisitor):
             self.__record_instruction(f'LDWA {node.value},i')
         elif self.is_constant(node_value['name']):  # skip LDWA if constant
             pass
+        elif node_value['name'] in self.__first.keys():  # LDWA for known variable
+            self.__record_instruction(f'LDWA {node.value},i')
         else:  # skip first LDWA for known variable and indicate to skip STWA
             self.__first[node_value['name']] = True
 
@@ -106,6 +108,10 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'{inverted[type(node.test.ops[0])]} end_l_{loop_name}')
         # Visiting the body of the loop
         for contents in node.body:
+            # variables in loop body must undergo all instructions
+            node_value = contents.__dict__
+            if 'targets' in node_value.keys():
+                self.__first[node_value['targets'][0].id] = False
             self.visit(contents)
         self.__record_instruction(f'BR test_{loop_name}')
         # Sentinel marker for the end of the loop
