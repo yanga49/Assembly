@@ -75,7 +75,7 @@ class FunctionVisitor(ast.NodeVisitor):
 
     def visit_While(self, node):
         loop_id = self.__identify()
-        loop_name = self.__get_name(loop_id)
+        loop_name = loop_id
         inverted = {
             ast.Lt: 'BRGE',  # '<'  in the code means we branch if '>=' 
             ast.LtE: 'BRGT',  # '<=' in the code means we branch if '>' 

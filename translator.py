@@ -35,16 +35,20 @@ def process(input_file, root_node):
     print('; Branching to top level (tl) instructions')
     print('\t\tBR tl')
     memory_alloc.generate()
+    all_locals = [] # storing all local variables so that TopLevelProgram has a copy of all local vars
     top_level = TopLevelProgram('tl')
+    for s in range(len(root_node.body)):
+        if isinstance(root_node.body[s], ast.FunctionDef):
+                local_ext = LocalVariableExtraction()
+                local_ext.visit(root_node.body[s])
+                all_locals.append(local_ext.results)
+    top_level.set_local_vars(all_locals)
+
     top_level.visit(root_node)
     ep = EntryPoint(top_level.finalize())
     for s in root_node.body:
             if isinstance(s, ast.FunctionDef):
-                local_ext = LocalVariableExtraction()
-                local_ext.visit(s)
-                top_level.local_vars = local_ext.results
                 func_process(s)
-                top_level.local_vars = None
     ep.generate() 
 
 def func_process(funcdef_node):

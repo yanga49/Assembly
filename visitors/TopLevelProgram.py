@@ -6,7 +6,7 @@ LabeledInstruction = tuple[str, str]
 class TopLevelProgram(ast.NodeVisitor):
     """We supports assignments and input/print calls"""
 
-    def __init__(self, entry_point, local_vars : LocalVariableExtraction = None ) -> None:
+    def __init__(self, entry_point) -> None:
         super().__init__()
         self.__instructions = list()
         self.__record_instruction('NOP1', label=entry_point)
@@ -16,10 +16,12 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__first = dict()
         self.__symbol_table = dict()
         # if the top level program contains a function, it is important for tl program to know the variables for push/pop operations
-        self.local_vars = None 
-        if self.local_vars != None:
-            self.stack_alloc = len(self.local_vars)*2
+        self.local_vars = None
+        self.current_function = 0
 
+    def set_local_vars(self,local_vars):
+        self.local_vars = local_vars
+    
 
     def finalize(self):
         self.__instructions.append((None, '.END'))
@@ -39,9 +41,17 @@ class TopLevelProgram(ast.NodeVisitor):
         if self.__should_save:
             if self.is_constant(node.targets[0].id):  # skip STWA if constant
                 pass
-            # handling when assign statement is a function call
+            # handling when assign statement is a function call (i.e function returns a value that is stored in another variable)
             elif isinstance(node.value, ast.Call):
-                self.__record_instruction(f'assigned function call here')
+                self.__record_instruction(f'SUBSP {len(self.local_vars[self.current_function])*2},i')
+                #self.__record_instruction(f'assigned function call here {self.local_vars[self.current_function]}')
+                self.__record_instruction(f'CALL {node.value.func.id}')
+                self.__record_instruction(f'LDWA 0,s')
+                self.__record_instruction(f'STWA {name},d')
+                self.__record_instruction(f'ADDSP {len(self.local_vars[self.current_function])*2},i')
+                self.current_function += 1
+
+
             elif 'value' not in node_value.keys():  # STWA if no known value
                 self.__record_instruction(f'STWA {name},d')
             elif self.__first[node.targets[0].id]:  # skip STWA if first variable
@@ -58,8 +68,11 @@ class TopLevelProgram(ast.NodeVisitor):
             self.__record_instruction(f'LDWA {node.value},i')
         elif self.is_constant(node_value['name']):  # skip LDWA if constant
             pass
+        elif node_value['name'] in self.__first.keys():  # LDWA for known variable
+            self.__record_instruction(f'LDWA {node.value},i')
         else:  # skip first LDWA for known variable and indicate to skip STWA
             self.__first[node_value['name']] = True
+
 
     def visit_Name(self, node):
         node_value = node.__dict__
@@ -91,6 +104,7 @@ class TopLevelProgram(ast.NodeVisitor):
                 name = self.__get_name(node.args[0].id)
                 self.__record_instruction(f'DECO {name},d')
             case _: 
+                pass
                 self.__record_instruction(f'CALL {node.func.id}')
                 #raise ValueError(f'Unsupported function call: {node.func.id}')
 
@@ -118,6 +132,10 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'{inverted[type(node.test.ops[0])]} end_l_{loop_name}')
         # Visiting the body of the loop
         for contents in node.body:
+            node_value = contents.__dict__
+            if 'targets' in node_value.keys():
+                self.__first[node_value['targets'][0].id] = False
+
             self.visit(contents)
         self.__record_instruction(f'BR test_{loop_name}')
         # Sentinel marker for the end of the loop
