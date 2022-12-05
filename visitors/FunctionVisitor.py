@@ -3,26 +3,21 @@ from .LocalVariables import LocalVariableExtraction
 
 LabeledInstruction = tuple[str, str]
 
-class TopLevelProgram(ast.NodeVisitor):
+class FunctionVisitor(ast.NodeVisitor):
     """We supports assignments and input/print calls"""
 
-    def __init__(self, entry_point, local_vars : LocalVariableExtraction = None ) -> None:
+    def __init__(self, entry_point, local_vars: LocalVariableExtraction) -> None:
         super().__init__()
+        self.local_vars = local_vars.results
+        self.stack_alloc = len(self.local_vars)*2
         self.__instructions = list()
         self.__record_instruction('NOP1', label=entry_point)
         self.__should_save = True
         self.__current_variable = None
         self.__elem_id = 0
-        self.__first = dict()
-        self.__symbol_table = dict()
-        # if the top level program contains a function, it is important for tl program to know the variables for push/pop operations
-        self.local_vars = None 
-        if self.local_vars != None:
-            self.stack_alloc = len(self.local_vars)*2
-
 
     def finalize(self):
-        self.__instructions.append((None, '.END'))
+        #self.__instructions.append((None, '.END'))
         return self.__instructions
 
     ####
@@ -34,38 +29,19 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__current_variable = node.targets[0].id
         # visiting the left part, now knowing where to store the result
         self.visit(node.value)
-        node_value = node.value.__dict__
-        name = self.__get_name(self.__current_variable)
         if self.__should_save:
-            if self.is_constant(node.targets[0].id):  # skip STWA if constant
-                pass
-            # handling when assign statement is a function call
-            elif isinstance(node.value, ast.Call):
-                self.__record_instruction(f'assigned function call here')
-            elif 'value' not in node_value.keys():  # STWA if no known value
-                self.__record_instruction(f'STWA {name},d')
-            elif self.__first[node.targets[0].id]:  # skip STWA if first variable
-                self.__first[node.targets[0].id] = False
-            else:  # STWA if not first variable
-                self.__record_instruction(f'STWA {name},d')
+            self.__record_instruction(f'STWA {self.__current_variable},s')
         else:
             self.__should_save = True
         self.__current_variable = None
 
-    def visit_Constant(self, node):
-        node_value = node.__dict__
-        if 'name' not in node_value.keys():  # LDWA i when variable is modified
-            self.__record_instruction(f'LDWA {node.value},i')
-        elif self.is_constant(node_value['name']):  # skip LDWA if constant
-            pass
-        else:  # skip first LDWA for known variable and indicate to skip STWA
-            self.__first[node_value['name']] = True
 
+    def visit_Constant(self, node):
+        self.__record_instruction(f'LDWA {node.value},i')
+    
     def visit_Name(self, node):
-        node_value = node.__dict__
-        name = self.__get_name(node.id)
-        if 'value' not in node_value.keys() and not self.is_constant(node.id):  # check not a Constant
-            self.__record_instruction(f'LDWA {name},d')
+        self.__record_instruction(f'LDWA {node.id},s')
+
 
     def visit_BinOp(self, node):
         self.__access_memory(node.left, 'LDWA')
@@ -78,21 +54,19 @@ class TopLevelProgram(ast.NodeVisitor):
 
     def visit_Call(self, node):
         match node.func.id:
-            case 'int':
+            case 'int': 
                 # Let's visit whatever is casted into an int
                 self.visit(node.args[0])
             case 'input':
                 # We are only supporting integers for now
-                current_variable = self.__get_name(self.__current_variable)
-                self.__record_instruction(f'DECI {current_variable},d')
-                self.__should_save = False  # DECI already save the value in memory
+                self.__record_instruction(f'DECI {self.__current_variable},s')
+                self.__should_save = False # DECI already save the value in memory
             case 'print':
                 # We are only supporting integers for now
-                name = self.__get_name(node.args[0].id)
-                self.__record_instruction(f'DECO {name},d')
-            case _: 
+                self.__record_instruction(f'DECO {node.args[0].id},s')
+            case _:
                 self.__record_instruction(f'CALL {node.func.id}')
-                #raise ValueError(f'Unsupported function call: {node.func.id}')
+                #raise ValueError(f'Unsupported function call: { node.func.id}')
 
     ####
     ## Handling While loops (only variable OP variable)
@@ -180,44 +154,45 @@ class TopLevelProgram(ast.NodeVisitor):
     ####
 
     def visit_FunctionDef(self, node):
-        pass
+        
+        # if function is not a void, allocating space on the stack for return value
+        for s in node.body:
+            if isinstance(s, ast.Return):
+                self.__record_instruction(f'.EQUATE {self.stack_alloc + 2}', label = f'retVal')
+        
+        # if node.args.args:
+        #     for i in range(len(node.args.args)):
+        #         self.__record_instruction(f'.EQUATE (2nd last stack pos)', label = f'{node.args.args[i].arg}')
+
+        self.__record_instruction(f'SUBSP {self.stack_alloc},i')
+        for contents in node.body:
+            self.visit(contents)
+        self.__record_instruction(f'ADDSP {self.stack_alloc},i')
+        self.__record_instruction(f'RET')
+        
+    def visit_Return(self, node):
+        self.__record_instruction(f'STWA retVal,s')
+
 
 
     ####
     ## Helper functions to 
     ####
 
-    def __record_instruction(self, instruction, label=None):
+    def __record_instruction(self, instruction, label = None):
         self.__instructions.append((label, instruction))
 
-    def __access_memory(self, node, instruction, label=None):
-        if isinstance(node, ast.Constant):  # i instruction with value
+    def __access_memory(self, node, instruction, label = None):
+        if isinstance(node, ast.Constant):
             self.__record_instruction(f'{instruction} {node.value},i', label)
-        elif self.is_constant(node.id):  # i instruction for constant
-            name = self.__get_name(node.id)
-            self.__record_instruction(f'{instruction} {name},i', label)
-        else:  # d instruction
-            name = self.__get_name(node.id)
-            self.__record_instruction(f'{instruction} {name},d', label)
+        # if node is a constant with a name (.EQUATE) keyword 
+        elif node.id[0] == '_': 
+            self.__record_instruction(f'{instruction} {node.id},i', label)
+        else:
+            self.__record_instruction(f'{instruction} {node.id},s', label)
 
     def __identify(self):
         result = self.__elem_id
         self.__elem_id = self.__elem_id + 1
         return result
 
-    def __get_name(self, name):  # records and returns 8 character name
-        if type(name) is not str:
-            return name
-        if name not in self.__symbol_table.keys():
-            if len(name) > 8:  # rename if len > 8
-                self.__symbol_table[name] = name[0: 4] + name[-4:]
-            else:
-                self.__symbol_table[name] = name
-        return self.__symbol_table[name]
-
-    @staticmethod
-    def is_constant(name: str):
-        if name[0] == '_' and name[1:].isupper():
-            return True
-        else:
-            return False
