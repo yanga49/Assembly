@@ -18,9 +18,11 @@ class FunctionVisitor(ast.NodeVisitor):
         self.num_params = 0
         self.params = []
         self.retval = ''
+        self.visitedfuncs = 0
+        self.visitedwhile = 0
 
     def finalize(self):
-        #self.__instructions.append((None, '.END'))
+        # removed .END because its not the end of the program
         return self.__instructions
 
     ####
@@ -57,7 +59,12 @@ class FunctionVisitor(ast.NodeVisitor):
         if node.left.id in self.params:
             self.__record_instruction(f'SUBSP {self.stack_alloc - (self.num_params*2)},i')
         if isinstance(node.op, ast.Add):
-            self.__access_memory(node.right, 'ADDA')
+            if isinstance(node.right, ast.Constant):
+                self.__access_memory(node.right, 'ADDA')
+            elif node.right.id+'N' in self.local_vars:
+                self.__access_memory(node.right, 'ADDA', name='N')
+            else:
+                self.__access_memory(node.right, 'ADDA')
         elif isinstance(node.op, ast.Sub):
             self.__access_memory(node.right, 'SUBA')
         else:
@@ -165,7 +172,6 @@ class FunctionVisitor(ast.NodeVisitor):
     ####
 
     def visit_FunctionDef(self, node):
-        
         # if function is not a void, allocating space on the stack for return value
         for s in node.body:
             if isinstance(s, ast.Return):
