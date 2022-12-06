@@ -39,7 +39,7 @@ def process(input_file, root_node):
     top_level = TopLevelProgram('tl')
     for s in range(len(root_node.body)):
         if isinstance(root_node.body[s], ast.FunctionDef):
-                local_ext = LocalVariableExtraction()
+                local_ext = LocalVariableExtraction(extractor.results)
                 local_ext.visit(root_node.body[s])
                 all_locals.append(local_ext.results)
     top_level.set_local_vars(all_locals)
@@ -48,12 +48,12 @@ def process(input_file, root_node):
     ep = EntryPoint(top_level.finalize())
     for s in root_node.body:
             if isinstance(s, ast.FunctionDef):
-                func_process(s)
+                func_process(s,extractor.results)
     ep.generate() 
 
-def func_process(funcdef_node):
+def func_process(funcdef_node, global_vars):
     print(f'; ***** {funcdef_node.name} function definition')
-    extractor = LocalVariableExtraction()
+    extractor = LocalVariableExtraction(global_vars)
     extractor.visit(funcdef_node)
     memory_alloc = LocalMemoryAllocation(extractor.results)
     memory_alloc.generate()

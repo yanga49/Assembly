@@ -15,6 +15,9 @@ class FunctionVisitor(ast.NodeVisitor):
         self.__should_save = True
         self.__current_variable = None
         self.__elem_id = 0
+        self.num_params = 0
+        self.params = []
+        self.retval = ''
 
     def finalize(self):
         #self.__instructions.append((None, '.END'))
@@ -30,7 +33,10 @@ class FunctionVisitor(ast.NodeVisitor):
         # visiting the left part, now knowing where to store the result
         self.visit(node.value)
         if self.__should_save:
-            self.__record_instruction(f'STWA {self.__current_variable},s')
+            if self.__current_variable + 'L' in self.local_vars:
+                self.__record_instruction(f'STWA {self.__current_variable}L,s')
+            else:
+                self.__record_instruction(f'STWA {self.__current_variable},s')
         else:
             self.__should_save = True
         self.__current_variable = None
@@ -44,7 +50,12 @@ class FunctionVisitor(ast.NodeVisitor):
 
 
     def visit_BinOp(self, node):
-        self.__access_memory(node.left, 'LDWA')
+        if node.left.id+'N' in self.local_vars:
+            self.__access_memory(node.left, 'LDWA', name='N')
+        else:
+            self.__access_memory(node.left, 'LDWA')
+        if node.left.id in self.params:
+            self.__record_instruction(f'SUBSP {self.stack_alloc - (self.num_params*2)},i')
         if isinstance(node.op, ast.Add):
             self.__access_memory(node.right, 'ADDA')
         elif isinstance(node.op, ast.Sub):
@@ -158,20 +169,30 @@ class FunctionVisitor(ast.NodeVisitor):
         # if function is not a void, allocating space on the stack for return value
         for s in node.body:
             if isinstance(s, ast.Return):
-                self.__record_instruction(f'.EQUATE {self.stack_alloc + 2}', label = f'retVal')
+                self.stack_alloc -= 2
+                if len(node.name) > 4:
+                    self.retval = node.name[-4:]+'Ret'
+                else:
+                    self.retval = node.name+'Ret'
+             
         
-        # if node.args.args:
-        #     for i in range(len(node.args.args)):
-        #         self.__record_instruction(f'.EQUATE (2nd last stack pos)', label = f'{node.args.args[i].arg}')
-
-        self.__record_instruction(f'SUBSP {self.stack_alloc},i')
+        # finding number of params in function
+        if node.args.args:
+            self.num_params = len(node.args.args)
+            for i in range(len(node.args.args)):
+                self.params.append(node.args.args[i].arg)
+        else:
+            self.__record_instruction(f'SUBSP {self.stack_alloc - (self.num_params*2)},i')
+        
         for contents in node.body:
             self.visit(contents)
-        self.__record_instruction(f'ADDSP {self.stack_alloc},i')
+        self.__record_instruction(f'ADDSP {self.stack_alloc - (self.num_params*2)},i')
         self.__record_instruction(f'RET')
         
     def visit_Return(self, node):
-        self.__record_instruction(f'STWA retVal,s')
+        pass
+        self.__record_instruction(f'STWA {self.retval},s')
+        self.__record_instruction(f'LDWA {self.retval},s')
 
 
 
@@ -182,14 +203,25 @@ class FunctionVisitor(ast.NodeVisitor):
     def __record_instruction(self, instruction, label = None):
         self.__instructions.append((label, instruction))
 
-    def __access_memory(self, node, instruction, label = None):
-        if isinstance(node, ast.Constant):
-            self.__record_instruction(f'{instruction} {node.value},i', label)
-        # if node is a constant with a name (.EQUATE) keyword 
-        elif node.id[0] == '_': 
-            self.__record_instruction(f'{instruction} {node.id},i', label)
+    def __access_memory(self, node, instruction, label = None, name = None):
+        if name != None:
+            if isinstance(node, ast.Constant):
+                self.__record_instruction(f'{instruction} {node.value}N,i', label)
+            # if node is a constant with a name (.EQUATE) keyword 
+            elif node.id[0] == '_': 
+                self.__record_instruction(f'{instruction} {node.id}N,i', label)
+            else:
+                self.__record_instruction(f'{instruction} {node.id}N,s', label)
+
+        
         else:
-            self.__record_instruction(f'{instruction} {node.id},s', label)
+            if isinstance(node, ast.Constant):
+                self.__record_instruction(f'{instruction} {node.value},i', label)
+            # if node is a constant with a name (.EQUATE) keyword 
+            elif node.id[0] == '_': 
+                self.__record_instruction(f'{instruction} {node.id},i', label)
+            else:
+                self.__record_instruction(f'{instruction} {node.id},s', label)
 
     def __identify(self):
         result = self.__elem_id

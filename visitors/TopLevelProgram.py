@@ -18,6 +18,7 @@ class TopLevelProgram(ast.NodeVisitor):
         # if the top level program contains a function, it is important for tl program to know the variables for push/pop operations
         self.local_vars = None
         self.current_function = 0
+        self.returns = False
 
     def set_local_vars(self,local_vars):
         self.local_vars = local_vars
@@ -41,16 +42,15 @@ class TopLevelProgram(ast.NodeVisitor):
         if self.__should_save:
             if self.is_constant(node.targets[0].id):  # skip STWA if constant
                 pass
-            # handling when assign statement is a function call (i.e function returns a value that is stored in another variable)
-            elif isinstance(node.value, ast.Call):
-                self.__record_instruction(f'SUBSP {len(self.local_vars[self.current_function])*2},i')
-                #self.__record_instruction(f'assigned function call here {self.local_vars[self.current_function]}')
-                self.__record_instruction(f'CALL {node.value.func.id}')
-                self.__record_instruction(f'LDWA 0,s')
-                self.__record_instruction(f'STWA {name},d')
-                self.__record_instruction(f'ADDSP {len(self.local_vars[self.current_function])*2},i')
-                self.current_function += 1
-
+            # # handling when assign statement is a function call (i.e function returns a value that is stored in another variable)
+            # elif isinstance(node.value, ast.Call):
+            #     self.__record_instruction(f'SUBSP {len(self.local_vars[self.current_function])*2},i')
+            #     #self.__record_instruction(f'assigned function call here {self.local_vars[self.current_function]}')
+            #     self.visit(node.value)
+            #     self.__record_instruction(f'LDWA 0,s')
+            #     self.__record_instruction(f'STWA {name},d')
+            #     self.__record_instruction(f'ADDSP {len(self.local_vars[self.current_function])*2},i')
+            #     self.current_function += 1
 
             elif 'value' not in node_value.keys():  # STWA if no known value
                 self.__record_instruction(f'STWA {name},d')
@@ -104,8 +104,32 @@ class TopLevelProgram(ast.NodeVisitor):
                 name = self.__get_name(node.args[0].id)
                 self.__record_instruction(f'DECO {name},d')
             case _: 
-                pass
-                self.__record_instruction(f'CALL {node.func.id}')
+               
+                if node.args:
+                    if self.returns: # if function returns a value and has params is called
+                        self.__record_instruction(f'SUBSP {len(node.args)*2 + 2},i')
+                        s = 2*len(node.args)
+                        for i in range(len(node.args)):
+                            s -= 2
+                            self.__record_instruction(f'LDWA {node.args[i].id},d')
+                            self.__record_instruction(f'STWA {s},s')
+                        self.__record_instruction(f'CALL {node.func.id}')
+                        self.__record_instruction(f'ADDSP {len(node.args)*2},i')
+                        self.__record_instruction(f'LDWA  0,s')
+
+                    else: # if void function with params is called
+                        
+                        self.__record_instruction(f'SUBSP {len(node.args)*2},i')
+                        s = 2*len(node.args)
+                        for i in range(len(node.args)):
+                            s -= 2
+                            self.__record_instruction(f'LDWA {node.args[i].id},d')
+                            self.__record_instruction(f'STWA {s},s')
+                        self.__record_instruction(f'CALL {node.func.id}')
+                        self.__record_instruction(f'ADDSP {len(node.args)*2},i')
+                else: # if void function without params is called
+                    self.__record_instruction(f'CALL {node.func.id}')
+
                 #raise ValueError(f'Unsupported function call: {node.func.id}')
 
     ####
@@ -198,6 +222,12 @@ class TopLevelProgram(ast.NodeVisitor):
     ####
 
     def visit_FunctionDef(self, node):
+        self.returns = False
+        for s in node.body:
+            if isinstance(s, ast.Return):
+                self.returns =  True
+        
+        
         pass
 
 
