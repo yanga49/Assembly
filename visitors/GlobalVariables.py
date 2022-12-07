@@ -14,10 +14,15 @@ class GlobalVariableExtraction(ast.NodeVisitor):
         if len(node.targets) != 1:
             raise ValueError("Only unary assignments are supported")
         node_value = node.value.__dict__
-        if node.targets[0].id not in self.results.keys():
-            if 'value' in node_value.keys():
+        if 'id' not in node.targets[0].__dict__.keys():  # skip array access nodes
+            pass
+        elif node.targets[0].id not in self.results.keys():
+            if node.targets[0].id[-1] == '_' and 'right' in node_value.keys():  # check if array
+                size = node_value['right'].__dict__
+                self.results[node.targets[0].id] = size['value']  # store array name and size in dict
+            elif 'value' in node_value.keys():  # check if constant or variable with value
                 self.results[node.targets[0].id] = node_value['value']
-                node.value.__dict__['name'] = node.targets[0].id  # store variable name in dict
+                node.value.__dict__['name'] = node.targets[0].id  # store variable name and value in dict
             else:
                 self.results[node.targets[0].id] = None
         # print(self.results)

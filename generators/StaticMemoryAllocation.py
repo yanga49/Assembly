@@ -9,8 +9,10 @@ class StaticMemoryAllocation():
         print('; Allocating Global (static) memory')
         for n in self.__global_vars.keys():
             name = self.__get_name(n)
-            if self.__global_vars[n] is None:
-                print(f'{str(name + ":"):<9}\t.BLOCK 2')  # reserving memory
+            if name[-1] == '_':
+                print(f'{str(name + ":"):<9}\t.BLOCK {2 * self.__global_vars[n]}')  # reserving memory for array
+            elif self.__global_vars[n] is None:
+                print(f'{str(name + ":"):<9}\t.BLOCK 2')  # reserving memory for undefined variable
             elif self.is_constant(n):
                 print(f'{str(name + ":"):<9}\t.EQUATE {self.__global_vars[n]}')  # reserving memory for constant
             else:
