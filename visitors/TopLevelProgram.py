@@ -21,7 +21,6 @@ class TopLevelProgram(ast.NodeVisitor):
         self.local_vars = None
         self.current_function = 0
         self.returns = False
-        self.inc_array = False
 
     def set_local_vars(self, local_vars):
         self.local_vars = local_vars
@@ -50,7 +49,7 @@ class TopLevelProgram(ast.NodeVisitor):
                 self.__first[name] = False
             elif name in self.__first and self.is_array(name):  # STWA 'x' if array
                 self.__record_instruction(f'STWA {name},x')
-            elif name in self.__is_index or self.inc_array:  # STWX if index
+            elif name in self.__is_index:  # STWX if index
                 self.__record_instruction(f'STWX {name},d')
             elif self.is_constant(node.targets[0].id):  # skip STWA if constant
                 pass
@@ -87,7 +86,7 @@ class TopLevelProgram(ast.NodeVisitor):
     def visit_Name(self, node):
         node_value = node.__dict__
         name = self.__get_name(node.id)
-        if name in self.__is_index or self.inc_array:
+        if name in self.__is_index:
             self.__record_instruction(f'LDWX {name},d')
         elif 'value' not in node_value.keys() and not self.is_constant(node.id):  # check not a Constant
             self.__record_instruction(f'LDWA {name},d')
@@ -202,7 +201,6 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'BR test_{loop_name}')
         # Sentinel marker for the end of the loop
         self.__record_instruction(f'NOP1', label=f'end_l_{loop_name}')
-        self.inc_array = False
 
     def visit_If(self, node):
         cond_id = self.__identify()
