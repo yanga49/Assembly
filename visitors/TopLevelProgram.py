@@ -104,23 +104,11 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__should_save = True
 
     def visit_BinOp(self, node):
-        if 'id' in node.left.__dict__.keys():
-            if node.left.id in self.__is_index:
-                self.inc_array = True
-        if self.inc_array:
-            self.__access_memory(node.left, 'LDWX')
-        else:
-            self.__access_memory(node.left, 'LDWA')
+        self.__access_memory(node.left, 'LDWA')
         if isinstance(node.op, ast.Add):
-            if self.inc_array:
-                self.__access_memory(node.right, 'ADDX')
-            else:
-                self.__access_memory(node.right, 'ADDA')
+            self.__access_memory(node.right, 'ADDA')
         elif isinstance(node.op, ast.Sub):
-            if self.inc_array:
-                self.__access_memory(node.right, 'SUBX')
-            else:
-                self.__access_memory(node.right, 'SUBA')
+            self.__access_memory(node.right, 'SUBA')
         elif isinstance(node.op, ast.Mult):  # skip Mult operation for array initialization
             pass
         else:
