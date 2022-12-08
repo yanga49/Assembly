@@ -16,11 +16,12 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__elem_id = 0
         self.__first = dict()
         self.__symbol_table = dict()
-        self.__index = 0
+        self.__is_index = set()
         # if the top level program contains a function, it is important for tl program to know the variables for push/pop operations
         self.local_vars = None
         self.current_function = 0
         self.returns = False
+        self.inc_array = False
 
     def set_local_vars(self, local_vars):
         self.local_vars = local_vars
@@ -37,7 +38,7 @@ class TopLevelProgram(ast.NodeVisitor):
         # remembering the name of the target
         if isinstance(node.targets[0], ast.Subscript):
             self.__current_variable = node.targets[0].value.id
-            self.__index = node.targets[0].slice.id
+            self.visit(node.targets[0])
         elif 'id' in node.targets[0].__dict__.keys():
             self.__current_variable = node.targets[0].id
         # visiting the left part, now knowing where to store the result
@@ -45,9 +46,11 @@ class TopLevelProgram(ast.NodeVisitor):
         node_value = node.value.__dict__
         name = self.__get_name(self.__current_variable)
         if self.__should_save:
-            if isinstance(node.targets[0], ast.Subscript):  # skip if array
-                pass
-            elif 'is_index' in node_value.keys():  # STWX if index
+            if name not in self.__first and self.is_array(name):  # skip first SWTX if array
+                self.__first[name] = False
+            elif name in self.__first and self.is_array(name):  # STWA 'x' if array
+                self.__record_instruction(f'STWA {name},x')
+            elif name in self.__is_index or self.inc_array:  # STWX if index
                 self.__record_instruction(f'STWX {name},d')
             elif self.is_constant(node.targets[0].id):  # skip STWA if constant
                 pass
@@ -84,15 +87,40 @@ class TopLevelProgram(ast.NodeVisitor):
     def visit_Name(self, node):
         node_value = node.__dict__
         name = self.__get_name(node.id)
-        if 'value' not in node_value.keys() and not self.is_constant(node.id):  # check not a Constant
+        if name in self.__is_index or self.inc_array:
+            self.__record_instruction(f'LDWX {name},d')
+        elif 'value' not in node_value.keys() and not self.is_constant(node.id):  # check not a Constant
             self.__record_instruction(f'LDWA {name},d')
 
+    def visit_Subscript(self, node):
+        array_id = self.__identify()
+        # indicate that this variable node is used for indexing
+        array = node.value
+        index = node.slice
+        # add index to is_index
+        self.__is_index.add(index)
+        self.__record_instruction(f'LDWX {index.id},d')
+        self.__record_instruction('ASLX')
+        self.__should_save = True
+
     def visit_BinOp(self, node):
-        self.__access_memory(node.left, 'LDWA')
+        if 'id' in node.left.__dict__.keys():
+            if node.left.id in self.__is_index:
+                self.inc_array = True
+        if self.inc_array:
+            self.__access_memory(node.left, 'LDWX')
+        else:
+            self.__access_memory(node.left, 'LDWA')
         if isinstance(node.op, ast.Add):
-            self.__access_memory(node.right, 'ADDA')
+            if self.inc_array:
+                self.__access_memory(node.right, 'ADDX')
+            else:
+                self.__access_memory(node.right, 'ADDA')
         elif isinstance(node.op, ast.Sub):
-            self.__access_memory(node.right, 'SUBA')
+            if self.inc_array:
+                self.__access_memory(node.right, 'SUBX')
+            else:
+                self.__access_memory(node.right, 'SUBA')
         elif isinstance(node.op, ast.Mult):  # skip Mult operation for array initialization
             pass
         else:
@@ -106,7 +134,10 @@ class TopLevelProgram(ast.NodeVisitor):
             case 'input':
                 # We are only supporting integers for now
                 current_variable = self.__get_name(self.__current_variable)
-                self.__record_instruction(f'DECI {current_variable},d')
+                if self.is_array(current_variable):  # input to array
+                    self.__record_instruction(f'DECI {current_variable},x')
+                else:
+                    self.__record_instruction(f'DECI {current_variable},d')
                 self.__should_save = False  # DECI already save the value in memory
             case 'print':
                 if isinstance(node.args[0], ast.Subscript):  # print array[i]
@@ -183,6 +214,7 @@ class TopLevelProgram(ast.NodeVisitor):
         self.__record_instruction(f'BR test_{loop_name}')
         # Sentinel marker for the end of the loop
         self.__record_instruction(f'NOP1', label=f'end_l_{loop_name}')
+        self.inc_array = False
 
     def visit_If(self, node):
         cond_id = self.__identify()
@@ -199,7 +231,8 @@ class TopLevelProgram(ast.NodeVisitor):
         # right part can only be a variable
         self.__access_memory(node.test.comparators[0], 'CPWA')
         # Branching is condition is not true (thus, inverted)
-
+        if not node.orelse:
+            self.__record_instruction(f'{inverted[type(node.test.ops[0])]} aft_{cond_id}')
         # Visiting the body of the loop
 
         if node.orelse:
@@ -214,9 +247,6 @@ class TopLevelProgram(ast.NodeVisitor):
 
         while node.orelse and len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
             self.__record_instruction(f'NOP1', label=f'elif_{cond_id}')
-
-            # self.__access_memory(node.test.left, 'LDWA', label = f'/elif_{cond_id}')
-            # right part can only be a variable
             self.__access_memory(node.test.comparators[0], 'CPWA')
             self.__record_instruction(f'{inverted[type(node.test.ops[0])]} else_{cond_id}')
             node = node.orelse[0]
@@ -231,19 +261,10 @@ class TopLevelProgram(ast.NodeVisitor):
                 self.visit(contents)
             self.__record_instruction(f'BR aft_{cond_id}')
 
-        self.__record_instruction(f'BR aft_{cond_id}')
+        if not node.orelse:
+            self.__record_instruction(f'BR aft_{cond_id}')
+
         self.__record_instruction(f'NOP1', label=f'aft_{cond_id}')
-
-    ####
-    ## Handling Arrays
-    ####
-
-    def visit_Subscript(self, node):
-        array_id = self.__identify()
-        node.slice['is_index'] = True  # indicate that this variable node is used for indexing
-        index = node.slice.__dict__
-        print(array_id)
-        print(index)
 
     ####
     ## Not handling function calls
@@ -294,6 +315,13 @@ class TopLevelProgram(ast.NodeVisitor):
     @staticmethod
     def is_constant(name: str):
         if name[0] == '_' and name[1:].isupper():
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def is_array(name: str):
+        if name[-1] == '_':
             return True
         else:
             return False
