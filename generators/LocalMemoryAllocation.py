@@ -24,12 +24,8 @@ class LocalMemoryAllocation(ast.NodeVisitor):
                 numvars -= 2
                 returns = False
             elif n.endswith('N') and returns == False:
-                #if n.endswith('N'):
-                    #numvars -= 2
                 numvars -= 2
             if not n.endswith('Ret'):
-                #if self.returns == True:
-                    #numvars += 2
                 print(f'{str(n+":"):<9}\t.EQUATE {numvars}') # reserving memory
                 numvars -= 2
           
