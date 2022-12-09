@@ -1,9 +1,10 @@
 import ast
 
 class LocalMemoryAllocation(ast.NodeVisitor):
-
+# Responsible for local memory allocation of each function definition (printing equal statements)
     def __init__(self, local_vars: dict()) -> None:
         self.__local_vars = local_vars
+        self.returns = False
 
     def generate(self):
         print('; Allocating local variables on the stack')
@@ -15,13 +16,23 @@ class LocalMemoryAllocation(ast.NodeVisitor):
                 numvars = len(self.__local_vars)*2 
                 print(f'{str(var+":"):<9}\t.EQUATE 0') 
                 returns = True
+                self.returns = True
                 
             
         for n in self.__local_vars:
             if n.endswith('N') and returns == True:
                 numvars -= 2
                 returns = False
+            elif n.endswith('N') and returns == False:
+                #if n.endswith('N'):
+                    #numvars -= 2
+                numvars -= 2
             if not n.endswith('Ret'):
+                #if self.returns == True:
+                    #numvars += 2
                 print(f'{str(n+":"):<9}\t.EQUATE {numvars}') # reserving memory
                 numvars -= 2
+          
+             
+
             
